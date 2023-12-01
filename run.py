@@ -120,11 +120,12 @@ class Bot(commands.Bot):
     MAX_MESSAGE_HISTORY = 20 # 過去のメッセージの履歴の最大数
 
     # 初期化＆ログイン
-    def __init__(self, channel: str):
+    def __init__(self, channel: str, send_messages: bool):
         super().__init__(
             token=TWITCH_CHAT_OAUTH_PASSWORD, prefix=COMMAND_PREFIX, initial_channels=[channel]
         )
         self.message_history = []
+        self.send_messages = send_messages
 
     # ログイン完了時の処理
     async def event_channel_joined(self, channel: Channel):
@@ -149,8 +150,9 @@ class Bot(commands.Bot):
 
         # メッセージから絵文字(emotion)を削除する
         # 注意: ユーザーメンションよりも先に絵文字を削除する必要がある
+        cleaned_message = message.content
         if message.tags and message.tags['emotes']:
-            cleaned_message = remove_emotions(message=message.content, emotion_info_raw=message.tags['emotes'])
+            cleaned_message = remove_emotions(message=cleaned_message, emotion_info_raw=message.tags['emotes'])
         # メッセージからユーザーへのメンション(@XXXX)を削除する
         cleaned_message = remove_user_mentions(message=cleaned_message)
 
@@ -161,19 +163,23 @@ class Bot(commands.Bot):
         is_message_japanese = is_japanese(message=cleaned_message)
 
         print(f"{formatted_user_name}: {message.content}")
-        print(f"cleaned_message: {cleaned_message}")
+
+        # メッセージを翻訳する
+        sending_message = None
         if is_message_japanese:
             # 日本語の場合は英語に翻訳する
             success, translated_to_english_message = translate_english(message=formatted_message_line, message_history=self.message_history)
             if success:
-                print(f"{formatted_user_name}: EN> {translated_to_english_message}\n")
+                sending_message = f"en> {translated_to_english_message}"
+                print(f"{formatted_user_name}: {sending_message}\n")
             else:
                 print("\n")
         else:
             # 日本語以外の場合は日本語に翻訳する    
             success, translated_to_japanese_message = translate_japanese(message=formatted_message_line, message_history=self.message_history)
             if success:
-                print(f"{formatted_user_name}: JA> {translated_to_japanese_message}\n")
+                sending_message = f"ja> {translated_to_japanese_message}"
+                print(f"{formatted_user_name}: {sending_message}\n")
             else:
                 print("\n")
 
@@ -181,19 +187,22 @@ class Bot(commands.Bot):
         self.message_history.append(formatted_message_line)
         self.message_history = self.message_history[-self.MAX_MESSAGE_HISTORY:]
 
-        #if NONE_TAG not in translated_message:
-        #    # await message.channel.send(f"/me {message_text}")
-        #    print("!!!!!!!!!!!!!!!!!SEND MESSAGE!!!!!!!!!!!!!!!!!")
+        if self.send_messages and sending_message:
+            await message.channel.send(f"/me {sending_message}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="TwitchTranslator")
     parser.add_argument(
-        "--channel", type=str, required=True, help="入室するチャンネル名"
+        "-c", "--channel", type=str, required=True, help="入室するチャンネル名"
+    )
+    parser.add_argument(
+        "-s", "--send-messages", action="store_true",
+        help="メッセージを送信するかどうか"
     )
     args = parser.parse_args()
 
-    bot = Bot(channel=args.channel)
+    bot = Bot(channel=args.channel, send_messages=args.send_messages)
     bot.run()
 
 
