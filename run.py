@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import signal
 
 from openai import OpenAI
@@ -80,6 +81,40 @@ For languages other than Japanese, please return {OTHERS_TAG}."""
     return JAPANESE_TAG in language
 
 
+# メッセージからユーザーへのメンション(@XXXX)を削除する
+def remove_user_mentions(message: str) -> str:
+    pattern = r'@\S+'
+    return re.sub(pattern, '', message)
+
+
+# メッセージから絵文字(emotion)を削除する
+def remove_emotions(message: str, emotion_info_raw: str) -> str:
+    """
+    Twitchで絵文字付きでメッセージを送信した場合は以下のような形式でmessageが送られてきます。
+    ちわわ gayusuPyaaaa yunbeaGogo yunbeaGogo toyan0Abareru toyan0Abareru toyan0Abareru
+    「ちわわ」以下が全て絵文字です。
+
+    また絵文字のメタ情報（emotion_info_raw）として以下の情報も付随します。
+    emotesv2_8c9e7298986244548c4838c4b49d8462:4-15/emotesv2_41f525cb751c4ed4a41d3242283229ed:17-26,28-37/emotesv2_63ac2695c6d24c129033a06d5f60ecd6:39-51,53-65,67-79
+    このメタ情報から 4-15 = gayusuPyaaaa, 17-26 = yunbeaGogo, 39-51 = toyan0Abareru を導き出します。
+    そして message からこれらの文字列を削除します。
+    """
+
+    emotion_words = []
+    for emotion_info in emotion_info_raw.split('/'):
+        if ':' in emotion_info:
+            _, positions = emotion_info.split(':')
+            for pos in positions.split(','):
+                start, end = map(int, pos.split('-'))
+                emotion_words.append(message[start:end+1])
+                break
+
+    for emotion_word in emotion_words:
+        message = message.replace(emotion_word, '')
+
+    return message
+
+
 # Twitch のチャットボット
 class Bot(commands.Bot):
     MAX_MESSAGE_HISTORY = 20 # 過去のメッセージの履歴の最大数
@@ -108,34 +143,42 @@ class Bot(commands.Bot):
 
         # ユーザー名の表示を整える
         if message.author.display_name != message.author.name:
-            formated_user_name = f"{message.author.display_name}({message.author.name})"
+            formatted_user_name = f"{message.author.display_name}({message.author.name})"
         else:
-            formated_user_name = message.author.name
+            formatted_user_name = message.author.name
 
-        # メッセージ全体の表示を整える
-        formated_message_line = f"{formated_user_name}: {message.content}"
+        # メッセージから絵文字(emotion)を削除する
+        # 注意: ユーザーメンションよりも先に絵文字を削除する必要がある
+        if message.tags and message.tags['emotes']:
+            cleaned_message = remove_emotions(message=message.content, emotion_info_raw=message.tags['emotes'])
+        # メッセージからユーザーへのメンション(@XXXX)を削除する
+        cleaned_message = remove_user_mentions(message=cleaned_message)
+
+        # 名前とメッセージを結合する
+        formatted_message_line = f"{formatted_user_name}: {cleaned_message}"
 
         # メッセージが日本語かどうか判定する
-        is_message_japanese = is_japanese(message=message.content)
+        is_message_japanese = is_japanese(message=cleaned_message)
 
-        print(f"{formated_user_name}: {message.content}")
+        print(f"{formatted_user_name}: {message.content}")
+        print(f"cleaned_message: {cleaned_message}")
         if is_message_japanese:
             # 日本語の場合は英語に翻訳する
-            success, translated_to_english_message = translate_english(message=formated_message_line, message_history=self.message_history)
+            success, translated_to_english_message = translate_english(message=formatted_message_line, message_history=self.message_history)
             if success:
-                print(f"{formated_user_name}: EN> {translated_to_english_message}\n")
+                print(f"{formatted_user_name}: EN> {translated_to_english_message}\n")
             else:
                 print("\n")
         else:
             # 日本語以外の場合は日本語に翻訳する    
-            success, translated_to_japanese_message = translate_japanese(message=formated_message_line, message_history=self.message_history)
+            success, translated_to_japanese_message = translate_japanese(message=formatted_message_line, message_history=self.message_history)
             if success:
-                print(f"{formated_user_name}: JA> {translated_to_japanese_message}\n")
+                print(f"{formatted_user_name}: JA> {translated_to_japanese_message}\n")
             else:
                 print("\n")
 
         # メッセージの履歴をためる
-        self.message_history.append(formated_message_line)
+        self.message_history.append(formatted_message_line)
         self.message_history = self.message_history[-self.MAX_MESSAGE_HISTORY:]
 
         #if NONE_TAG not in translated_message:
