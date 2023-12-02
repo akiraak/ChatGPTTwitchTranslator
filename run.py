@@ -91,12 +91,12 @@ def remove_user_mentions(message: str) -> str:
 def remove_emotions(message: str, emotion_info_raw: str) -> str:
     """
     Twitchで絵文字付きでメッセージを送信した場合は以下のような形式でmessageが送られてきます。
-    ちわわ gayusuPyaaaa yunbeaGogo yunbeaGogo toyan0Abareru toyan0Abareru toyan0Abareru
+    ちわわ aaaaaaaaaaaa bbbbbbbbbb bbbbbbbbbb ccccccccccccc ccccccccccccc ccccccccccccc
     「ちわわ」以下が全て絵文字です。
 
     また絵文字のメタ情報（emotion_info_raw）として以下の情報も付随します。
     emotesv2_8c9e7298986244548c4838c4b49d8462:4-15/emotesv2_41f525cb751c4ed4a41d3242283229ed:17-26,28-37/emotesv2_63ac2695c6d24c129033a06d5f60ecd6:39-51,53-65,67-79
-    このメタ情報から 4-15 = gayusuPyaaaa, 17-26 = yunbeaGogo, 39-51 = toyan0Abareru を導き出します。
+    このメタ情報から 4-15 = aaaaaaaaaaaa, 17-26 = bbbbbbbbbb, 39-51 = ccccccccccccc を導き出します。
     そして message からこれらの文字列を削除します。
     """
 
